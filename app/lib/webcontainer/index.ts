@@ -1,30 +1,32 @@
 import { WebContainerSim } from './WebContainerSim';
 
-// ¶¨ÒåÉÏÏÂÎÄ½Ó¿Ú
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä½Ó¿ï¿½
 interface WebContainerContext {
   loaded: boolean;
 }
 
-// ´´½¨ÉÏÏÂÎÄ£¬Ê¹ÓÃ hot data ±£³Ö×´Ì¬
-export const webcontainerContext: WebContainerContext = (import.meta.hot?.data.webcontainerContext as WebContainerContext) ?? {
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£ï¿½Ê¹ï¿½ï¿½ hot data ï¿½ï¿½ï¿½ï¿½×´Ì¬
+export const webcontainerContext: WebContainerContext = (import.meta.hot?.data
+  .webcontainerContext as WebContainerContext) ?? {
   loaded: false,
 };
 
-// ±£´æÉÏÏÂÎÄµ½ hot data
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ hot data
 if (import.meta.hot) {
   import.meta.hot.data.webcontainerContext = webcontainerContext;
 }
 
-// ³õÊ¼»¯ webcontainer
-export let webcontainer: Promise<WebContainerSim> = import.meta.hot?.data.webcontainer ?? 
+// ï¿½ï¿½Ê¼ï¿½ï¿½ webcontainer
+export const webcontainer: Promise<WebContainerSim> =
+  import.meta.hot?.data.webcontainer ??
   new Promise((resolve) => {
     const instance = new WebContainerSim('hc', 'p7');
-    
+
     const initWithRetry = async () => {
       try {
         await instance.initializeDomains();
         webcontainerContext.loaded = true;
- 
+
         resolve(instance);
       } catch (error) {
         console.warn('WebContainer initialization failed, retrying in 3 seconds...', error);
@@ -35,7 +37,7 @@ export let webcontainer: Promise<WebContainerSim> = import.meta.hot?.data.webcon
     initWithRetry();
   });
 
-// ÔÚ HMR Ê±±£´æÊµÀý
+// ï¿½ï¿½ HMR Ê±ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½
 if (import.meta.hot) {
   import.meta.hot.data.webcontainer = webcontainer;
 }

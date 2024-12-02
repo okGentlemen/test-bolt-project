@@ -1,4 +1,5 @@
-import { WORK_DIR } from "~/utils/constants";
+/* eslint-disable @blitz/comment-syntax */
+import { WORK_DIR } from '~/utils/constants';
 
 // Add interface for domains response
 interface DomainsResponse {
@@ -7,7 +8,7 @@ interface DomainsResponse {
   data: {
     domains: string[];
     token: string;
-  }
+  };
 }
 
 export interface Process {
@@ -24,7 +25,6 @@ interface FileSystemEntry {
   children?: Map<string, FileSystemEntry>;
   isBase64?: boolean;
 }
-
 
 interface PendingSync {
   path: string;
@@ -47,6 +47,7 @@ interface Terminal extends Process {
 
 const SSH_SERVER = '192.168.11.10:31775';
 const WS_SERVER = `ws://${SSH_SERVER}/ws`;
+
 // const API_SERVER = 'http://192.168.11.10:30535'; // Add this line
 
 const API_SERVER = 'http://121.41.165.96'; // Add this line
@@ -82,15 +83,16 @@ export class WebContainerSim {
   private sshSession: Terminal | null = null;
   private pendingSyncs: PendingSync[] = [];
   private syncInterval: ReturnType<typeof setInterval> | null = null;
-  public workdir: string = WORK_DIR;
+  workdir: string = WORK_DIR;
   private containerPath: string;
   private terminals: Map<string, Terminal> = new Map();
   private textEncoder = new TextEncoder();
   private textDecoder = new TextDecoder();
   private apiPrefix: string; // Add this line
   private wsServer: string;
-  public previewServers: string[] = [];
-  public authToken: string = '';
+  previewServers: string[] = [];
+  authToken: string = '';
+
   // 更新命令枚举
   private readonly Command = {
     // server side
@@ -102,7 +104,7 @@ export class WebContainerSim {
     INPUT: '0',
     RESIZE_TERMINAL: '1',
     PAUSE: '2',
-    RESUME: '3'
+    RESUME: '3',
   };
 
   constructor(uid: string, projectName: string = '') {
@@ -110,30 +112,32 @@ export class WebContainerSim {
     this.containerPath = `/data/raid0/ccc/testproj/${projectName}`;
     this.apiPrefix = `${uid}/${projectName}`; // Add this line
     this.wsServer = WS_SERVER;
-    
+
     // 处理热更新
     if (import.meta.hot) {
       // 保存当前状态
       import.meta.hot.data.fileSystem = this.fileSystem;
       import.meta.hot.data.pendingSyncs = this.pendingSyncs;
-      
+
       // 清理函数
       import.meta.hot.dispose(() => {
         this.cleanup();
       });
     }
-    
+
     this.startSyncInterval();
+
     // this.initializeDomains();
   }
 
   async initializeDomains() {
     try {
       const response = await fetch(`${API_SERVER}/api/${this.apiPrefix}/domains`, {
-        credentials: 'include'
+        credentials: 'include',
       });
-      
-      const data = await response.json() as DomainsResponse;
+
+      const data = (await response.json()) as DomainsResponse;
+
       if (!data.success || !data.data.domains.length) {
         throw new Error(data.message || 'No domains available');
       }
@@ -142,7 +146,7 @@ export class WebContainerSim {
       const terminalDomain = data.data.domains[0];
       this.wsServer = `ws://${terminalDomain}/ws`;
       this.previewServers = data.data.domains.slice(1);
-      
+
       // 初始化 WebSocket 时使用 token
       const authToken = data.data.token;
       this.authToken = authToken;
@@ -155,9 +159,8 @@ export class WebContainerSim {
       setCookie('Authorization', authToken, baseDomain);
 
       // console.log('====cookie==========',document.cookie, baseDomain);
-      
-      // console.log('[WebContainerSim] authToken= set cookie=====', authToken); 
 
+      // console.log('[WebContainerSim] authToken= set cookie=====', authToken);
     } catch (error) {
       console.error('Failed to initialize domains:', error);
       throw error;
@@ -170,26 +173,30 @@ export class WebContainerSim {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+
     this.syncInterval = setInterval(() => this.processPendingSyncs(), 5000);
   }
 
   private async processPendingSyncs() {
     const MAX_RETRIES = 3;
-    
+
     for (let i = 0; i < this.pendingSyncs.length; i++) {
       const sync = this.pendingSyncs[i];
+
       try {
         if (sync.operation === 'write') {
           await this.syncFileToContainer(sync.path, sync.content);
         } else if (sync.operation === 'mkdir') {
           await this.syncDirToContainer(sync.path);
         }
+
         // Remove successful sync
         this.pendingSyncs.splice(i, 1);
         i--;
       } catch (error) {
         console.error(`Failed to sync ${sync.path}:`, error);
         sync.retryCount++;
+
         if (sync.retryCount >= MAX_RETRIES) {
           console.error(`Max retries reached for ${sync.path}, removing from queue`);
           this.pendingSyncs.splice(i, 1);
@@ -200,25 +207,26 @@ export class WebContainerSim {
   }
 
   private toContainerPath(userPath: string): string {
-    const relativePath = userPath.startsWith(this.workdir) 
-      ? userPath.slice(this.workdir.length) 
-      : userPath;
+    const relativePath = userPath.startsWith(this.workdir) ? userPath.slice(this.workdir.length) : userPath;
     return `${this.containerPath}${relativePath}`;
   }
 
-  async spawn_sync(command: string, args: string[] = []): Promise<{
+  async spawn_sync(
+    command: string,
+    args: string[] = [],
+  ): Promise<{
     exit: number;
     output: string;
   }> {
     const tempTerminal = await this.initTerminal();
     const marker = `__CMD_COMPLETE_${Math.random().toString(36).substring(7)}__`;
     const fullCommand = `${command} ${args.join(' ')}; echo "${marker}"`;
-    
+
     try {
       // Collect output
       let output = '';
       const reader = tempTerminal.output.getReader();
-      
+
       // Send command
       const writer = tempTerminal.input.getWriter();
       await writer.write(fullCommand + '\n');
@@ -227,9 +235,13 @@ export class WebContainerSim {
       // Wait for command completion and collect output
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+
+        if (done) {
+          break;
+        }
+
         output += value;
-        
+
         // Check if command has completed using our marker
         if (output.includes(marker)) {
           break;
@@ -246,14 +258,16 @@ export class WebContainerSim {
 
       return {
         exit: 0,
-        output
+        output,
       };
     } catch (error: unknown) {
       tempTerminal.kill();
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
       return {
         exit: 1,
-        output: errorMessage
+        output: errorMessage,
       };
     }
   }
@@ -267,15 +281,17 @@ export class WebContainerSim {
         },
         body: JSON.stringify({
           key: path,
-          content: content
+          content,
         }),
-        credentials: 'include'
+        credentials: 'include',
       });
-      
-      const data = await response.json() as APIResponse;
+
+      const data = (await response.json()) as APIResponse;
+
       if (!data.success) {
         throw new Error(data.message);
       }
+
       console.log('==========syncFileToContainer========', path, 'finish');
     } catch (error) {
       console.error('Error syncing file to container:', error);
@@ -293,12 +309,13 @@ export class WebContainerSim {
         },
         body: JSON.stringify({
           key: `${path}/.gitkeep`,
-          content: ''
+          content: '',
         }),
-        credentials: 'include'
+        credentials: 'include',
       });
-      
-      const data = await response.json() as OSSUploadResponse;
+
+      const data = (await response.json()) as OSSUploadResponse;
+
       if (!data.success) {
         throw new Error(data.message);
       }
@@ -308,22 +325,20 @@ export class WebContainerSim {
     }
   }
 
-  public fs = {
+  fs = {
     writeFile: async (path: string, content: string | Uint8Array): Promise<void> => {
       const fullPath = `${this.workdir}/${path}`;
-      
+
       // Convert content to string
-      const contentStr = content instanceof Uint8Array ? 
-        Buffer.from(content).toString('base64') :
-        content;
-      
+      const contentStr = content instanceof Uint8Array ? Buffer.from(content).toString('base64') : content;
+
       const isBase64 = content instanceof Uint8Array;
 
       // 立即更新本地缓存
       this.updateFileSystem(fullPath, {
         type: 'file',
         content: contentStr,
-        isBase64: isBase64
+        isBase64,
       });
 
       // 异步同步到服务端
@@ -336,60 +351,64 @@ export class WebContainerSim {
           body: JSON.stringify({
             key: path,
             content: contentStr,
-            isBase64: isBase64
+            isBase64,
           }),
-          credentials: 'include'
+          credentials: 'include',
         });
-        
-        const data = await response.json() as OSSUploadResponse;
+
+        const data = (await response.json()) as OSSUploadResponse;
+
         if (!data.success) {
           throw new Error(data.message);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       } catch (error) {
         console.error('Error syncing file to server:', error);
+
         // 可以考虑添加到重试队列
         this.pendingSyncs.push({
-          path: path,
+          path,
           content: contentStr,
           operation: 'write',
           retryCount: 0,
-          isBase64: isBase64
+          isBase64,
         });
       }
     },
 
     readFile: async (path: string): Promise<Uint8Array> => {
       const fullPath = `${this.workdir}/${path}`;
-      
+
       // 首先检查本地缓存
       const cachedEntry = this.getFileFromPath(fullPath);
+
       if (cachedEntry && cachedEntry.type === 'file' && cachedEntry.content !== undefined) {
         if (cachedEntry.isBase64) {
           return Buffer.from(cachedEntry.content, 'base64');
         }
+
         return this.textEncoder.encode(cachedEntry.content);
       }
 
       // 如果缓存中没有，从服务器获取
       try {
         const response = await fetch(`${API_SERVER}/api/${this.apiPrefix}/oss/download/${path}`, {
-          credentials: 'include'
+          credentials: 'include',
         });
-        
+
         if (!response.ok) {
           throw new Error(`Failed to read file: ${response.statusText}`);
         }
-        
+
         const content = await response.text();
-        
+
         // 更新缓存
         this.updateFileSystem(fullPath, {
           type: 'file',
-          content: content
+          content,
         });
-        
+
         return this.textEncoder.encode(content);
       } catch (error) {
         console.error('Error reading file from server:', error);
@@ -399,45 +418,48 @@ export class WebContainerSim {
 
     readdir: async (path: string): Promise<string[]> => {
       const fullPath = `${this.workdir}/${path}`;
-    
+
       // First check local cache
       const cachedEntry = this.getFileFromPath(fullPath);
+
       if (cachedEntry && cachedEntry.type === 'directory' && cachedEntry.children) {
         return Array.from(cachedEntry.children.keys());
       }
-    
+
       // If not in cache, fetch from server
       try {
         const response = await fetch(`${API_SERVER}/api/${this.apiPrefix}/oss/tree?prefix=${path}`, {
-          credentials: 'include'
+          credentials: 'include',
         });
-        
-        const data = await response.json() as OSSTreeResponse;
+
+        const data = (await response.json()) as OSSTreeResponse;
+
         if (!data.success) {
           throw new Error(data.message);
         }
-    
+
         // Filter and process paths to get only the files in the requested directory
         const files = data.tree
-        .filter(filePath => filePath.startsWith(path)) // Only include files under requested path
-        .map(filePath => filePath.slice(path.length + 1)) // Remove prefix path
-        .filter(Boolean); // Remove empty strings
-    
+          .filter((filePath) => filePath.startsWith(path)) // Only include files under requested path
+          .map((filePath) => filePath.slice(path.length + 1)) // Remove prefix path
+          .filter(Boolean); // Remove empty strings
+
         // Update cache with the directory structure
         const children = new Map<string, FileSystemEntry>();
-        files.forEach(relativePath => {
+        files.forEach((relativePath) => {
           // If the name contains a slash, it's a directory
           const parts = relativePath.split('/');
           const firstPart = parts[0];
-          
+
           if (parts.length > 1) {
             // It's a path with subdirectories
             children.set(relativePath, { type: 'file' });
+
             // Also add the directory entry if it doesn't exist
             if (!children.has(firstPart)) {
               children.set(firstPart, {
                 type: 'directory',
-                children: new Map()
+                children: new Map(),
               });
             }
           } else {
@@ -445,13 +467,13 @@ export class WebContainerSim {
             children.set(firstPart, { type: 'file' });
           }
         });
-    
+
         // Update cache
         this.updateFileSystem(fullPath, {
           type: 'directory',
-          children: children
+          children,
         });
-    
+
         return Array.from(children.keys());
       } catch (error) {
         console.error('Error reading directory from server:', error);
@@ -464,6 +486,7 @@ export class WebContainerSim {
 
       // Check if directory already exists
       const existingEntry = this.getFileFromPath(fullPath);
+
       if (existingEntry) {
         if (existingEntry.type === 'directory') {
           // Directory already exists, return silently
@@ -478,29 +501,33 @@ export class WebContainerSim {
       if (!options?.recursive) {
         const parentPath = fullPath.substring(0, fullPath.lastIndexOf('/'));
         const parentEntry = this.getFileFromPath(parentPath);
+
         if (!parentEntry || parentEntry.type !== 'directory') {
           throw new Error(`Cannot create directory '${path}': No such file or directory`);
         }
       }
 
       // Create directory and any necessary parent directories
-      const parts = fullPath.split('/').filter(p => p.length > 0);
+      const parts = fullPath.split('/').filter((p) => p.length > 0);
       let current = this.fileSystem;
-      
+
       for (const part of parts) {
         if (!current.has(part)) {
           current.set(part, {
             type: 'directory',
-            children: new Map()
+            children: new Map(),
           });
         }
+
         const entry = current.get(part);
+
         if (entry?.type !== 'directory') {
           throw new Error(`Cannot create directory '${path}': Path exists and is not a directory`);
         }
+
         current = entry.children!;
       }
-    }
+    },
   };
 
   private async ensureSSHSession(): Promise<void> {
@@ -510,20 +537,20 @@ export class WebContainerSim {
   }
 
   async initTerminal(): Promise<Terminal> {
-    console.log('==========initTerminal ========', this.wsServer, this.authToken)
-    const ws = new WebSocket(this.wsServer + '?Authorization=' + this.authToken,['tty']);
+    console.log('==========initTerminal ========', this.wsServer, this.authToken);
 
+    const ws = new WebSocket(this.wsServer + '?Authorization=' + this.authToken, ['tty']);
 
     const terminalId = Math.random().toString(36).substring(2, 15);
-    
+
     // 等待 WebSocket 连接建立
     await new Promise((resolve, reject) => {
       ws.onopen = () => {
         // 使用保存的 authToken
-        const msg = JSON.stringify({ 
-          AuthToken: '',//this.authToken, 
-          columns: 80, 
-          rows: 40
+        const msg = JSON.stringify({
+          AuthToken: '', //this.authToken,
+          columns: 80,
+          rows: 40,
         });
         ws.send(this.textEncoder.encode(msg));
         resolve(undefined);
@@ -533,11 +560,14 @@ export class WebContainerSim {
 
     // 添加发送数据的辅助方法
     const sendData = (data: string | Uint8Array) => {
-      if (ws.readyState !== WebSocket.OPEN) return;
+      if (ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
 
       if (typeof data === 'string') {
         const payload = new Uint8Array(data.length * 3 + 1);
         payload[0] = this.Command.INPUT.charCodeAt(0);
+
         const stats = this.textEncoder.encodeInto(data, payload.subarray(1));
         ws.send(payload.subarray(0, (stats.written as number) + 1));
       } else {
@@ -547,62 +577,66 @@ export class WebContainerSim {
         ws.send(payload);
       }
     };
-    
+
     // 保存 Command 和 textDecoder 的引用
     const { Command, textDecoder } = this;
-    
+
     const output = new ReadableStream<string>({
       start(controller) {
         ws.onmessage = (event) => {
           try {
             if (event.data instanceof Blob) {
-              event.data.arrayBuffer().then(buffer => {
-                try {
-                  const data = new Uint8Array(buffer);
-                  if (data.length > 0) {
-                    const cmd = String.fromCharCode(data[0]);
-                    const payload = data.subarray(1);
-                    
-                    switch (cmd) {
-                      case Command.OUTPUT:
-                        const text = textDecoder.decode(payload);
-                        controller.enqueue(text);
-                        break;
-                        
-                      case Command.SET_WINDOW_TITLE:
-                        const title = textDecoder.decode(payload);
-                        break;
-                        
-                      case Command.SET_PREFERENCES:
-                        try {
-                          const prefs = JSON.parse(textDecoder.decode(payload));
-                        } catch (e) {
-                          console.warn('Failed to parse preferences:', e);
-                        }
-                        break;
-                        
-                      default:
-                        console.warn('Unknown command:', cmd);
+              event.data
+                .arrayBuffer()
+                .then((buffer) => {
+                  try {
+                    const data = new Uint8Array(buffer);
+
+                    if (data.length > 0) {
+                      const cmd = String.fromCharCode(data[0]);
+                      const payload = data.subarray(1);
+
+                      switch (cmd) {
+                        case Command.OUTPUT:
+                          const text = textDecoder.decode(payload);
+                          controller.enqueue(text);
+                          break;
+
+                        case Command.SET_WINDOW_TITLE:
+                          const title = textDecoder.decode(payload);
+                          break;
+
+                        case Command.SET_PREFERENCES:
+                          try {
+                            const prefs = JSON.parse(textDecoder.decode(payload));
+                          } catch (e) {
+                            console.warn('Failed to parse preferences:', e);
+                          }
+                          break;
+
+                        default:
+                          console.warn('Unknown command:', cmd);
+                      }
                     }
+                  } catch (error) {
+                    console.error('Error processing binary WebSocket message:', error);
+                    controller.error(error);
                   }
-                } catch (error) {
-                  console.error('Error processing binary WebSocket message:', error);
+                })
+                .catch((error) => {
+                  console.error('Error reading Blob data:', error);
                   controller.error(error);
-                }
-              }).catch(error => {
-                console.error('Error reading Blob data:', error);
-                controller.error(error);
-              });
+                });
             } else if (typeof event.data === 'string') {
               controller.enqueue(event.data);
             }
           } catch (error) {
-            console.error('Error in WebSocket message handler:', error)
+            console.error('Error in WebSocket message handler:', error);
           }
         };
         ws.onclose = () => controller.close();
         ws.onerror = (e) => controller.error(e);
-      }
+      },
     });
 
     const input = new WritableStream<string>({
@@ -610,7 +644,7 @@ export class WebContainerSim {
         if (ws.readyState === WebSocket.OPEN) {
           sendData(chunk);
         }
-      }
+      },
     });
 
     const terminal: Terminal = {
@@ -636,6 +670,7 @@ export class WebContainerSim {
         if (ws.readyState === WebSocket.OPEN) {
           const payload = new Uint8Array(command.length * 3 + 2); // +2 for command byte and newline
           payload[0] = this.Command.INPUT.charCodeAt(0);
+
           const stats = this.textEncoder.encodeInto(command + '\n', payload.subarray(1));
           ws.send(payload.subarray(0, (stats.written as number) + 1));
         }
@@ -660,32 +695,35 @@ export class WebContainerSim {
           const interruptData = new Uint8Array([this.Command.INPUT.charCodeAt(0), 3]);
           ws.send(interruptData);
         }
-      }
+      },
     };
 
     this.terminals.set(terminalId, terminal);
-    
+
     // 发送初始化命令
     const writer = input.getWriter();
     await writer.write('cd project\n');
     writer.releaseLock();
-    
+
     return terminal;
   }
 
-  async spawn(command: string, args: string[] = []): Promise<{
+  async spawn(
+    command: string,
+    args: string[] = [],
+  ): Promise<{
     exit: Promise<number>;
     output: Promise<string>;
   }> {
     await this.ensureSSHSession();
-    
+
     const fullCommand = `${command} ${args.join(' ')}`;
-    
+
     return new Promise((resolve) => {
       if (!this.sshSession) {
         resolve({
           exit: Promise.resolve(1),
-          output: Promise.resolve('No SSH session available')
+          output: Promise.resolve('No SSH session available'),
         });
         return;
       }
@@ -694,30 +732,29 @@ export class WebContainerSim {
       if (this.sshSession.ws.readyState === WebSocket.OPEN) {
         const payload = new Uint8Array(fullCommand.length * 3 + 2);
         payload[0] = this.Command.INPUT.charCodeAt(0);
+
         const stats = this.textEncoder.encodeInto(fullCommand + '\n', payload.subarray(1));
         this.sshSession.ws.send(payload.subarray(0, (stats.written as number) + 1));
-        
+
         // 立即返回，输出会通过 shell.ts 的管道处理
         resolve({
           exit: Promise.resolve(0),
-          output: Promise.resolve('')
+          output: Promise.resolve(''),
         });
       } else {
         resolve({
           exit: Promise.resolve(1),
-          output: Promise.resolve('WebSocket not connected')
+          output: Promise.resolve('WebSocket not connected'),
         });
       }
     });
   }
 
   async syncToExternalMap(externalMap: Map<string, string>): Promise<void> {
-    const syncDirectory = async (
-      current: Map<string, FileSystemEntry>,
-      path: string = ''
-    ) => {
+    const syncDirectory = async (current: Map<string, FileSystemEntry>, path: string = '') => {
       for (const [name, entry] of current.entries()) {
         const fullPath = path ? `${path}/${name}` : `/${name}`;
+
         if (entry.type === 'file' && entry.content !== undefined) {
           externalMap.set(fullPath, entry.content);
         } else if (entry.type === 'directory' && entry.children) {
@@ -731,80 +768,94 @@ export class WebContainerSim {
 
   private updateFileSystem(path: string, entry: FileSystemEntry): void {
     // console.log('==========updateFileSystem ========', path, entry)
-    const parts = path.split('/').filter(p => p.length > 0);
+    const parts = path.split('/').filter((p) => p.length > 0);
     let current = this.fileSystem;
 
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
+
       if (!current.has(part)) {
         current.set(part, {
           type: 'directory',
-          children: new Map()
+          children: new Map(),
         });
       }
+
       const dirEntry = current.get(part);
+
       if (dirEntry?.type !== 'directory') {
         throw new Error(`${parts.slice(0, i + 1).join('/')} is not a directory`);
       }
+
       current = dirEntry.children!;
     }
 
     const name = parts[parts.length - 1];
     current.set(name, entry);
+
     // console.log('==========updateFileSystem ========', this.fileSystem)
   }
 
   private getFileFromPath(path: string): FileSystemEntry | undefined {
-    const parts = path.split('/').filter(p => p.length > 0);
+    const parts = path.split('/').filter((p) => p.length > 0);
     let current = this.fileSystem;
-    
+
     for (let i = 0; i < parts.length - 1; i++) {
       const dirEntry = current.get(parts[i]);
-      if (!dirEntry || dirEntry.type !== 'directory') return undefined;
+
+      if (!dirEntry || dirEntry.type !== 'directory') {
+        return undefined;
+      }
+
       current = dirEntry.children!;
     }
 
     // console.log('==========current ========', path,current)
-    
+
     return current.get(parts[parts.length - 1]);
   }
 
   // Add terminal management methods
-  public getTerminal(terminalId: string): Terminal | undefined {
+  getTerminal(terminalId: string): Terminal | undefined {
     return this.terminals.get(terminalId);
   }
 
-  public getAllTerminals(): Terminal[] {
+  getAllTerminals(): Terminal[] {
     return Array.from(this.terminals.values());
   }
 
-  public killTerminal(terminalId: string): boolean {
+  killTerminal(terminalId: string): boolean {
     const terminal = this.terminals.get(terminalId);
+
     if (terminal) {
       terminal.kill();
       return true;
     }
+
     return false;
   }
 
-  public killAllTerminals(): void {
-    this.terminals.forEach(terminal => terminal.kill());
+  killAllTerminals(): void {
+    this.terminals.forEach((terminal) => terminal.kill());
     this.terminals.clear();
-    this.sshSession = null; 
+    this.sshSession = null;
   }
 
   // Add cleanup method
-  public cleanup(): void {
+  cleanup(): void {
     this.killAllTerminals();
+
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+
     // 在热更新时不清理文件系统缓存
     if (!import.meta.hot) {
       this.fileSystem.clear();
       this.pendingSyncs = [];
     }
+
     this.sshSession = null;
   }
 
@@ -817,15 +868,17 @@ export class WebContainerSim {
         },
         body: JSON.stringify({
           key: path,
-          content: content
+          content,
         }),
-        credentials: 'include'
+        credentials: 'include',
       });
-      
-      const data = await response.json() as APIResponse;
+
+      const data = (await response.json()) as APIResponse;
+
       if (!data.success) {
         throw new Error(data.message);
       }
+
       return true;
     } catch (error) {
       console.error('Error writing file:', error);
@@ -836,13 +889,13 @@ export class WebContainerSim {
   async readFile(path: string): Promise<string> {
     try {
       const response = await fetch(`${API_SERVER}/api/${this.apiPrefix}/oss/download${path}`, {
-        credentials: 'include'
+        credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to read file: ${response.statusText}`);
       }
-      
+
       return await response.text();
     } catch (error) {
       console.error('Error reading file:', error);
@@ -851,127 +904,131 @@ export class WebContainerSim {
   }
 
   async readdir(path: string): Promise<string[]> {
-    const fullPath = `${this.workdir}/${path}`
+    const fullPath = `${this.workdir}/${path}`;
+
     try {
       const response = await fetch(`${API_SERVER}/api/${this.apiPrefix}/oss/tree?prefix=${path}`, {
-        credentials: 'include'
+        credentials: 'include',
       });
-      
-      const data = await response.json() as OSSTreeResponse;
+
+      const data = (await response.json()) as OSSTreeResponse;
+
       if (!data.success) {
         throw new Error(data.message);
       }
-  
+
       // Filter and process paths to get only the files in the requested directory
       const files = data.tree
-      .filter(filePath => filePath.startsWith(path)) // Only include files under requested path
-      .map(filePath => filePath.slice(path.length + 1)) // Remove prefix path
-      .filter(Boolean); // Remove empty strings
-
-  
+        .filter((filePath) => filePath.startsWith(path)) // Only include files under requested path
+        .map((filePath) => filePath.slice(path.length + 1)) // Remove prefix path
+        .filter(Boolean); // Remove empty strings
 
       // Update cache with the directory structure
       const children = new Map<string, FileSystemEntry>();
-      files.forEach(relativePath => {
+      files.forEach((relativePath) => {
         // If the name contains a slash, it's a directory
         const parts = relativePath.split('/');
-          const firstPart = parts[0];
-          
-          if (parts.length > 1) {
-            // It's a path with subdirectories
-            children.set(relativePath, { type: 'file' });
-            // Also add the directory entry if it doesn't exist
-            if (!children.has(firstPart)) {
-              children.set(firstPart, {
-                type: 'directory',
-                children: new Map()
-              });
-            }
-          } else {
-            // It's a direct file/directory in current path
-            children.set(firstPart, { type: 'file' });
+        const firstPart = parts[0];
+
+        if (parts.length > 1) {
+          // It's a path with subdirectories
+          children.set(relativePath, { type: 'file' });
+
+          // Also add the directory entry if it doesn't exist
+          if (!children.has(firstPart)) {
+            children.set(firstPart, {
+              type: 'directory',
+              children: new Map(),
+            });
           }
+        } else {
+          // It's a direct file/directory in current path
+          children.set(firstPart, { type: 'file' });
+        }
       });
-  
+
       // Update cache
       this.updateFileSystem(fullPath, {
         type: 'directory',
-        children: children
+        children,
       });
 
-  
-      return files//Array.from(children.keys());
+      return files; //Array.from(children.keys());
     } catch (error) {
       console.error('Error reading directory from server:', error);
       throw error;
     }
   }
 
-  public async importDir(sourcePath: string): Promise<void> {
-    try {
-        // Get the directory tree from OSS
-        const files = await this.readdir(sourcePath);
-        
-        // Process each file/directory
-        for (const relativePath of files) {
-            const fullPath = `${sourcePath}/${relativePath}`;
-            
-            // Skip .gitkeep files
-            if (relativePath.endsWith('/.gitkeep')) continue;
-            
-            // If path ends with /, it's a directory
-            if (relativePath.endsWith('/')) {
-                // Create directory in local filesystem
-                await this.fs.mkdir(relativePath.slice(0, -1), { recursive: true });
-            } else {
-                // It's a file - read its content and write to local filesystem
-                try {
-                    const content = await this.readFile(fullPath);
-                    await this.fs.writeFile(relativePath, content);
-                } catch (error) {
-                    console.error(`Error importing file ${fullPath}:`, error);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error importing directory:', error);
-        throw error;
-    }
-  }
-
-  public async importDirFromServer(sourcePath: string): Promise<void> {
+  async importDir(sourcePath: string): Promise<void> {
     try {
       // Get the directory tree from OSS
       const files = await this.readdir(sourcePath);
-      
+
       // Process each file/directory
       for (const relativePath of files) {
         const fullPath = `${sourcePath}/${relativePath}`;
-        
+
         // Skip .gitkeep files
-        if (relativePath.endsWith('/.gitkeep')) continue;
-        
+        if (relativePath.endsWith('/.gitkeep')) {
+          continue;
+        }
+
+        // If path ends with /, it's a directory
+        if (relativePath.endsWith('/')) {
+          // Create directory in local filesystem
+          await this.fs.mkdir(relativePath.slice(0, -1), { recursive: true });
+        } else {
+          // It's a file - read its content and write to local filesystem
+          try {
+            const content = await this.readFile(fullPath);
+            await this.fs.writeFile(relativePath, content);
+          } catch (error) {
+            console.error(`Error importing file ${fullPath}:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error importing directory:', error);
+      throw error;
+    }
+  }
+
+  async importDirFromServer(sourcePath: string): Promise<void> {
+    try {
+      // Get the directory tree from OSS
+      const files = await this.readdir(sourcePath);
+
+      // Process each file/directory
+      for (const relativePath of files) {
+        const fullPath = `${sourcePath}/${relativePath}`;
+
+        // Skip .gitkeep files
+        if (relativePath.endsWith('/.gitkeep')) {
+          continue;
+        }
+
         // If path ends with /, it's a directory
         if (relativePath.endsWith('/')) {
           // Create directory in local filesystem only
           const dirPath = relativePath.slice(0, -1);
           const fullDirPath = `${this.workdir}/${dirPath}`;
-          
+
           // Update local filesystem structure without server sync
           this.updateFileSystem(fullDirPath, {
             type: 'directory',
-            children: new Map()
+            children: new Map(),
           });
         } else {
           // It's a file - read its content and update local filesystem only
           try {
             const content = await this.readFile(fullPath);
             const fullFilePath = `${this.workdir}/${relativePath}`;
-            
+
             // Update local filesystem without server sync
             this.updateFileSystem(fullFilePath, {
               type: 'file',
-              content: content
+              content,
             });
           } catch (error) {
             console.error(`Error importing file ${fullPath}:`, error);
@@ -983,4 +1040,4 @@ export class WebContainerSim {
       throw error;
     }
   }
-} 
+}
